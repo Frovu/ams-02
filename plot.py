@@ -10,35 +10,6 @@ import sqlite3
 conn = sqlite3.connect("ssdc.db")
 cursor = conn.cursor()
 
-def read_txt(path):
-	data = list()
-	with open(path) as file:
-		lines = file.readlines()
-		rigidity = lines[1].split()[1:]
-		for line in lines[3:]:
-			raw = line.split()
-			for i in range(2, len(raw)):
-				raw[i] = float(raw[i])
-			data.append([time.strptime(raw[0], "%Y-%m-%d")]+raw[2:])
-	return rigidity, data
-
-def plot_old(data):
-	R, d = read_txt('./p_spectra_ams02.txt')
-	colors = ['r','g','b','c','m','w']
-	i = 0
-	fig, ax = plt.subplots()
-	ax.set_ylabel(r'$p/\;(m^2\;s\;sr\;GV)$')
-	print(len(d))
-	for line in d[:79:15]:
-		i+=1
-		print(f'{colors[i%len(colors)]} - {time.strftime("%Y-%m-%d %H:%M:%S", line[0])}')
-		ax.set_xlabel('R, GV')
-		ax.semilogy(R, line[1:], colors[i%len(colors)]+'.')
-		#ax.set_xticks([10,20,30])
-		ax.xaxis.set_major_locator(MultipleLocator(base=10))
-		ax.grid()
-	plt.show()
-
 def select_data():
 	cursor.execute("SELECT * FROM AMS02 WHERE particle='p'")
 	data = cursor.fetchall()
@@ -53,22 +24,59 @@ def get_spectrum(data, time):
 	return flux, rigidity
 
 fig, ax = plt.subplots()
-def plot_one(flux, rigidity, color):
-	ax.set_ylabel('flux')
-	ax.set_xlabel('R, GV')
-	#ax.plot(rigidity, flux, f'{color}.')
-	ax.loglog(rigidity, flux, f'{color}.')
+ax.set_ylabel('flux')
+ax.set_xlabel('R, GV')
+def plot_one(flux, rigidity, color, label):
+	#ax.plot(rigidity, flux, f'{color}.', label=label)
+	ax.loglog(rigidity, flux, f'{color}.', label=label)
 	#ax.xaxis.set_major_locator(MultipleLocator(base=10))
-	ax.grid()
+	#ax.grid()
 
-def get_and_plot(data, time, color):
+def g(r, param):
+	return 10000 * (r ** (param))
+
+def plot_model(data, time, param, c):
+	f, rigidity = get_spectrum(data, time)
+	flux = [g(r, param) for r in rigidity]
+	ax.loglog(rigidity[1:], flux[1:], c, label='model')
+	#ax.loglog(rigidity, flux, 'w', label='model')
+
+def get_and_plot(data, time, color, label):
 	f, r = get_spectrum(data, time)
-	plot_one(f, r, color)
+	plot_one(f, r, color, label)
+
+def find_date(data, date):
+	for r in data:
+		if date > r[1] and date < r[2]:
+			return r[1]
+	return False
 
 data = select_data()
-get_and_plot(data, '2011-05-19', 'r')
+
+print(f'''Enter dates separated by \',\' within range from {data[0][1].split("T")[0]} to {data[-1][1].split("T")[0]}
+i.e. \'2015-04, 2015-06\':''')
+user_dates = [a.strip() for a in input().split(',')]
+user_dates = ['2014', '2015', '2016', '2017-04']
+dates = []
+# find date periods
+for d in user_dates:
+	date = find_date(data, d)
+	if date:
+		dates.append(date)
+	else:
+		print(f"Failed to resolve date: {d}")
+		exit(1)
+
+def plot_dates(data, dates):
+	colors = ['r','y','c','m','w','b']
+	for i, d in enumerate(dates):
+		get_and_plot(data, d, colors[i % len(colors)], d.split("T")[0])
+
 #get_and_plot(data, '2015-04', 'c')
 #get_and_plot(data, '2017-04', 'y')
-
-
+plot_model(data, dates[0], -2.65, 'w')
+plot_dates(data, dates)
+ax.grid()
+legend = plt.legend()
+plt.setp(legend.get_texts(), color='grey')
 plt.show()
